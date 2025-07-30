@@ -13,7 +13,7 @@ A lightweight Go library that provides utilities for building consistent, clean,
 ## Installation
 
 ```bash
-go get github.com/yourusername/httputils
+go get github.com/LullNil/httputils
 ```
 
 ## Quick Start
@@ -26,7 +26,7 @@ package main
 import (
     "net/http"
     "log/slog"
-    "github.com/yourusername/httputils"
+    "github.com/LullNil/httputils"
 )
 
 type CreateUserRequest struct {
