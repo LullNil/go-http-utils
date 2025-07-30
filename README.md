@@ -29,6 +29,7 @@ import (
     "net/http"
     "log/slog"
     "github.com/LullNil/go-http-utils/httputils"
+    "github.com/LullNil/go-http-utils/response" // Required for SendDataOK
 )
 
 type CreateUserRequest struct {
