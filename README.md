@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/LullNil/go-http-utils)](https://goreportcard.com/report/github.com/LullNil/go-http-utils)
+
 # HTTPUtils - Simplified Go HTTP Handler Library
 
 A lightweight Go library that provides utilities for building consistent, clean, and maintainable HTTP handlers with built-in request validation, error handling, and response formatting.
