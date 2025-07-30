@@ -386,3 +386,7 @@ To migrate existing handlers:
 5. Add structured logging with operation names
 
 Your handlers will become more maintainable, consistent, and significantly shorter!
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
