@@ -40,13 +40,13 @@ func DataWithError(msg string, data any) Response {
 	}
 }
 
-func errorResp(msg string) Response {
+func Error(msg string) Response {
 	return Response{Status: StatusError, Error: msg}
 }
 
-func Err(log *slog.Logger, w http.ResponseWriter, r *http.Request, op string, err error, msg string, httpStatus int) {
+func Err(w http.ResponseWriter, r *http.Request, log *slog.Logger, op string, err error, msg string, httpStatus int) {
 	log.Error(msg, slog.String("op", op), slog.String("err", err.Error()))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(httpStatus)
-	json.NewEncoder(w).Encode(errorResp(msg))
+	json.NewEncoder(w).Encode(Error(msg))
 }

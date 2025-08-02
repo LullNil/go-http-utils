@@ -25,7 +25,7 @@ func DecodeRequest[T any](w http.ResponseWriter, r *http.Request, log *slog.Logg
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Error("failed to decode request body", slog.String("op", op), slog.String("err", err.Error()))
-		response.Err(log, w, r, op, err, "invalid request payload", http.StatusBadRequest)
+		response.Err(w, r, log, op, err, "invalid request payload", http.StatusBadRequest)
 		return req, false
 	}
 
@@ -41,7 +41,7 @@ func ValidateRequest[T any](w http.ResponseWriter, r *http.Request, log *slog.Lo
 			slog.String("err", err.Error()),
 			slog.Any("validation_errors", err.Error()),
 		)
-		response.Err(log, w, r, op, err, "invalid input data", http.StatusBadRequest)
+		response.Err(w, r, log, op, err, "invalid input data", http.StatusBadRequest)
 		return false
 	}
 	return true
@@ -64,29 +64,18 @@ func SendDataOK(w http.ResponseWriter, r *http.Request, log *slog.Logger, op str
 // If the error is an apperr.HTTPError, it will be used directly.
 // Otherwise, it will be logged and an internal server error will be written.
 func WriteHTTPError(w http.ResponseWriter, log *slog.Logger, op string, err error) {
-	var httpErr apperr.HTTPError
-	if errors.As(err, &httpErr) {
-		http.Error(w, httpErr.Message, httpErr.Code)
-		return
-	}
-
-	log.Error("internal error", slog.String("op", op), slog.String("err", err.Error()))
-	http.Error(w, "internal server error", http.StatusInternalServerError)
-}
-
-// WriteHTTPErrorWithData writes an HTTP error response to w based on the given error.
-// If the error is an apperr.HTTPError, it will be used directly.
-// Otherwise, it will be logged and an internal server error will be written.
-// The given data will be included in the response with the error message.
-func WriteHTTPErrorWithData(w http.ResponseWriter, log *slog.Logger, op string, err error, data any) {
-	var httpErr apperr.HTTPError
+	var httpErr *apperr.HTTPError
 	if errors.As(err, &httpErr) {
 		log.Error("handled error",
 			slog.String("op", op),
 			slog.String("err", httpErr.Error()),
 		)
 
-		writeJSON(w, httpErr.Code, response.DataWithError(httpErr.Message, data))
+		if httpErr.Data != nil {
+			writeJSON(w, httpErr.Code, response.DataWithError(httpErr.Message, httpErr.Data))
+		} else {
+			writeJSON(w, httpErr.Code, response.Error(httpErr.Message))
+		}
 		return
 	}
 
@@ -95,7 +84,7 @@ func WriteHTTPErrorWithData(w http.ResponseWriter, log *slog.Logger, op string, 
 		slog.String("err", err.Error()),
 	)
 
-	writeJSON(w, http.StatusInternalServerError, response.DataWithError("internal server error", data))
+	writeJSON(w, http.StatusInternalServerError, response.Error("internal server error"))
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {

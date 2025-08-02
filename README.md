@@ -6,11 +6,11 @@ A lightweight Go library that simplifies HTTP handler development with automatic
 
 ## Features
 
-- **Type-safe JSON decoding** with generics
-- **Built-in validation** using struct tags
-- **Consistent error handling** with proper HTTP status codes
-- **Structured logging** integration
-- **Unified response format** across all endpoints
+* **Type-safe JSON decoding** with generics
+* **Built-in validation** using struct tags
+* **Consistent error handling** with proper HTTP status codes and optional data payloads
+* **Structured logging** integration
+* **Unified response format** across all endpoints
 
 ## Installation
 
@@ -36,24 +36,24 @@ type CreateUserRequest struct {
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
     const op = "handler.CreateUser"
-    
+
     // Decode and validate request
     req, ok := httputils.DecodeRequest[CreateUserRequest](w, r, h.log, op)
     if !ok {
         return
     }
-    
+
     if !httputils.ValidateRequest(w, r, h.log, op, req) {
         return
     }
-    
+
     // Business logic
     err := h.service.CreateUser(r.Context(), req)
     if err != nil {
         httputils.WriteHTTPError(w, h.log, op, err)
         return
     }
-    
+
     httputils.SendOK(w, r, h.log, op)
 }
 ```
@@ -61,6 +61,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 ## Code Comparison
 
 **Standard Go (67 lines):**
+
 ```go
 func CreateUserStandard(w http.ResponseWriter, r *http.Request) {
     // Manual JSON decoding with error handling
@@ -128,8 +129,7 @@ func CreateUserStandard(w http.ResponseWriter, r *http.Request) {
         })
         return
     }
-    
-    // Success response
+
     log.Printf("user created successfully")
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusOK)
@@ -140,25 +140,26 @@ func CreateUserStandard(w http.ResponseWriter, r *http.Request) {
 ```
 
 **With HTTPUtils (18 lines):**
+
 ```go
 func CreateUser(w http.ResponseWriter, r *http.Request) {
     const op = "handler.CreateUser"
-    
+
     req, ok := httputils.DecodeRequest[CreateUserRequest](w, r, h.log, op)
     if !ok {
         return
     }
-    
+
     if !httputils.ValidateRequest(w, r, h.log, op, req) {
         return
     }
-    
+
     err := h.service.CreateUser(r.Context(), req)
     if err != nil {
         httputils.WriteHTTPError(w, h.log, op, err)
         return
     }
-    
+
     httputils.SendOK(w, r, h.log, op)
 }
 ```
@@ -170,6 +171,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 ### Request Handling
 
 #### `DecodeRequest[T](w, r, log, op) (T, bool)`
+
 Decodes JSON request body into generic struct type.
 
 ```go
@@ -180,6 +182,7 @@ if !ok {
 ```
 
 #### `ValidateRequest[T](w, r, log, op, req) bool`
+
 Validates struct using `validator` tags.
 
 ```go
@@ -197,13 +200,17 @@ if !httputils.ValidateRequest(w, r, log, op, req) {
 ### Response Handling
 
 #### `SendOK(w, r, log, op)`
+
 Sends standard success response:
+
 ```json
 {"status": "OK"}
 ```
 
 #### `SendDataOK(w, r, log, op, data)`
+
 Sends success response with data:
+
 ```json
 {
     "status": "OK",
@@ -212,46 +219,45 @@ Sends success response with data:
 ```
 
 #### `WriteHTTPError(w, log, op, err)`
-Handles errors automatically:
-- Custom `HTTPError`: uses provided status and message
-- Other errors: logs and returns 500
 
-#### `WriteHTTPErrorWithData(w, log, op, err, data)`
-Same as `WriteHTTPError` but includes data in response:
-```json
-{
-    "status": "Error",
-    "error": "error message",
-    "data": { /* your data */ }
-}
-```
+Handles errors automatically:
+
+* If the error is a `HTTPError` (including `WithData`), it extracts the message, status code, and optional `data`
+* Logs structured error and responds accordingly
 
 ### Error Handling
 
 #### HTTPError Type
+
 ```go
 type HTTPError struct {
     Code    int
     Message string
+    Data    any // optional
 }
 
 func New(code int, msg string) HTTPError {
     return HTTPError{Code: code, Message: msg}
 }
+
+func NewWithData(code int, msg string, data any) HTTPError {
+    return HTTPError{Code: code, Message: msg, Data: data}
+}
 ```
 
 **Usage in services:**
+
 ```go
 func (s *Service) GetUser(id string) (*User, error) {
     if id == "" {
         return nil, apperr.New(http.StatusBadRequest, "user ID required")
     }
-    
+
     user, err := s.repo.GetUser(id)
     if errors.Is(err, ErrUserNotFound) {
         return nil, apperr.New(http.StatusNotFound, "user not found")
     }
-    
+
     return user, err
 }
 ```
@@ -259,51 +265,55 @@ func (s *Service) GetUser(id string) (*User, error) {
 ## Advanced Examples
 
 ### Handler with Data Response
+
 ```go
 func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
     const op = "handler.GetUsers"
-    
+
     req, ok := httputils.DecodeRequest[GetUsersRequest](w, r, h.log, op)
     if !ok {
         return
     }
-    
+
     if !httputils.ValidateRequest(w, r, h.log, op, req) {
         return
     }
-    
+
     users, err := h.service.GetUsers(r.Context(), req)
     if err != nil {
         httputils.WriteHTTPError(w, h.log, op, err)
         return
     }
-    
+
     httputils.SendDataOK(w, r, h.log, op, users)
 }
 ```
 
 ### Error Response with Data (Partial Success)
+
 ```go
 func (h *Handler) ProcessBatch(w http.ResponseWriter, r *http.Request) {
     const op = "handler.ProcessBatch"
-    
+
     req, ok := httputils.DecodeRequest[BatchRequest](w, r, h.log, op)
     if !ok {
         return
     }
-    
+
     results, err := h.service.ProcessBatch(r.Context(), req)
     if err != nil {
-        // Send error but include partial results
-        httputils.WriteHTTPErrorWithData(w, h.log, op, err, results)
+        // Use NewWithData and standard WriteHTTPError
+        err = apperr.NewWithData(http.StatusConflict, "partial failure", results)
+        httputils.WriteHTTPError(w, h.log, op, err)
         return
     }
-    
+
     httputils.SendDataOK(w, r, h.log, op, results)
 }
 ```
 
 ### Complex Validation Example
+
 ```go
 type CreateProductRequest struct {
     Name        string   `json:"name" validate:"required,min=2,max=100"`
@@ -316,17 +326,17 @@ type CreateProductRequest struct {
 
 ## Key Benefits
 
-- **🔧 Consistency**: Uniform error responses and logging
-- **🚀 Productivity**: 73% less boilerplate code
-- **🛡️ Reliability**: Type-safe request handling
-- **🧹 Maintainability**: Clean, testable handler code
-- **📊 Observability**: Structured logging with context
+* **🔧 Consistency**: Uniform error responses and logging
+* **🚀 Productivity**: 73% less boilerplate code
+* **🛡️ Reliability**: Type-safe request handling
+* **🧹 Maintainability**: Clean, testable handler code
+* **📊 Observability**: Structured logging with context
 
 ## Best Practices
 
 1. **Operation Names**: Use pattern `"handler.package.Method"`
 2. **Validation**: Leverage comprehensive `validate` tags
-3. **Error Handling**: Use `HTTPError` for business logic errors
+3. **Error Handling**: Use `HTTPError` or `NewWithData` for rich error information
 4. **Logging**: Include operation context in all logs
 5. **Clean Architecture**: Keep handlers thin, logic in services
 
@@ -336,7 +346,8 @@ type CreateProductRequest struct {
 2. Replace manual validation → `ValidateRequest`
 3. Replace custom error responses → `WriteHTTPError`
 4. Replace manual success responses → `SendOK`/`SendDataOK`
-5. Add structured logging with operation names
+5. Remove `WriteHTTPErrorWithData` and use `NewWithData` instead
+6. Add structured logging with operation names
 
 ## License
 
