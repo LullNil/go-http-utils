@@ -10,14 +10,19 @@ type HTTPError struct {
 	Data    any
 }
 
+// Error implements the error interface, returning the message string.
 func (e HTTPError) Error() string {
 	return e.Message
 }
 
-func New(code int, msg string) HTTPError {
-	return HTTPError{Code: code, Message: msg}
+// New returns a new HTTPError with the given code and message.
+// The Data field is set to nil.
+func New(code int, msg string) *HTTPError {
+	return &HTTPError{Code: code, Message: msg}
 }
 
-func NewWithData(code int, msg string, data any) HTTPError {
-	return HTTPError{Code: code, Message: msg, Data: data}
+// NewWithData returns a new HTTPError with the given code, message, and data.
+// The Data field is used to provide additional context or information related to the error.
+func NewWithData(code int, msg string, data any) *HTTPError {
+	return &HTTPError{Code: code, Message: msg, Data: data}
 }
