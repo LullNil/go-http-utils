@@ -7,6 +7,7 @@ package apperr
 type HTTPError struct {
 	Code    int
 	Message string
+	Data    any
 }
 
 func (e HTTPError) Error() string {
@@ -15,4 +16,8 @@ func (e HTTPError) Error() string {
 
 func New(code int, msg string) HTTPError {
 	return HTTPError{Code: code, Message: msg}
+}
+
+func NewWithData(code int, msg string, data any) HTTPError {
+	return HTTPError{Code: code, Message: msg, Data: data}
 }
