@@ -11,9 +11,9 @@ import (
 )
 
 type Response struct {
-	Status string      `json:"status"`
-	Data   interface{} `json:"data,omitempty"`
-	Error  string      `json:"error,omitempty"`
+	Status string `json:"status"`
+	Data   any    `json:"data,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
 const (
@@ -25,22 +25,22 @@ func OK() Response {
 	return Response{Status: StatusOK}
 }
 
-func DataOK(data interface{}) Response {
+func DataOK(data any) Response {
 	return Response{
 		Status: StatusOK,
 		Data:   data,
 	}
 }
 
-func SendDataOK(w http.ResponseWriter, log *slog.Logger, r *http.Request, op string, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(DataOK(data))
-
-	log.Info("operation successful", slog.String("op", op))
+func DataWithError(msg string, data any) Response {
+	return Response{
+		Status: StatusError,
+		Error:  msg,
+		Data:   data,
+	}
 }
 
-func Error(msg string) Response {
+func errorResp(msg string) Response {
 	return Response{Status: StatusError, Error: msg}
 }
 
@@ -48,5 +48,5 @@ func Err(log *slog.Logger, w http.ResponseWriter, r *http.Request, op string, er
 	log.Error(msg, slog.String("op", op), slog.String("err", err.Error()))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(httpStatus)
-	json.NewEncoder(w).Encode(Error(msg))
+	json.NewEncoder(w).Encode(errorResp(msg))
 }

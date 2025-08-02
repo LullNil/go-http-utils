@@ -1,16 +1,16 @@
+# HTTPUtils - Go HTTP Handler Library
+
 [![Go Report Card](https://goreportcard.com/badge/github.com/LullNil/go-http-utils)](https://goreportcard.com/report/github.com/LullNil/go-http-utils)
 
-# HTTPUtils - Simplified Go HTTP Handler Library
-
-A lightweight Go library that provides utilities for building consistent, clean, and maintainable HTTP handlers with built-in request validation, error handling, and response formatting.
+A lightweight Go library that simplifies HTTP handler development with automatic request validation, error handling, and consistent JSON responses.
 
 ## Features
 
-- **Generic Request Decoding**: Type-safe JSON request parsing with compile-time validation
-- **Built-in Validation**: Automatic struct validation using `validator` tags
-- **Consistent Error Handling**: Standardized error responses with proper HTTP status codes
-- **Structured Logging**: Integration with `slog` for consistent operation logging
-- **Clean Response Format**: Unified JSON response structure across all endpoints
+- **Type-safe JSON decoding** with generics
+- **Built-in validation** using struct tags
+- **Consistent error handling** with proper HTTP status codes
+- **Structured logging** integration
+- **Unified response format** across all endpoints
 
 ## Installation
 
@@ -20,8 +20,6 @@ go get github.com/LullNil/go-http-utils
 
 ## Quick Start
 
-### Basic Handler Example
-
 ```go
 package main
 
@@ -29,7 +27,6 @@ import (
     "net/http"
     "log/slog"
     "github.com/LullNil/go-http-utils/httputils"
-    "github.com/LullNil/go-http-utils/response" // Required for SendDataOK
 )
 
 type CreateUserRequest struct {
@@ -40,33 +37,30 @@ type CreateUserRequest struct {
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
     const op = "handler.CreateUser"
     
-    // Decode and validate request in one step
-    req, ok := httputils.DecodeRequest[CreateUserRequest](r, h.log, op, w)
+    // Decode and validate request
+    req, ok := httputils.DecodeRequest[CreateUserRequest](w, r, h.log, op)
     if !ok {
         return
     }
     
-    // Validate request
-    if ok := httputils.ValidateRequest(req, h.log, op, w, r); !ok {
+    if !httputils.ValidateRequest(w, r, h.log, op, req) {
         return
     }
     
-    // Your business logic here
+    // Business logic
     err := h.service.CreateUser(r.Context(), req)
     if err != nil {
         httputils.WriteHTTPError(w, h.log, op, err)
         return
     }
     
-    // Send success response
-    httputils.SendOK(w, h.log, op, r)
+    httputils.SendOK(w, r, h.log, op)
 }
 ```
 
-## Comparison: Before vs After
+## Code Comparison
 
-### Standard Go HTTP Handler (Before)
-
+**Standard Go (67 lines):**
 ```go
 func CreateUserStandard(w http.ResponseWriter, r *http.Request) {
     // Manual JSON decoding with error handling
@@ -102,22 +96,31 @@ func CreateUserStandard(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    // Email validation would require additional logic...
+    // Email validation (simplified)
+    if req.Email == "" {
+        log.Printf("validation failed: email is required")
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusBadRequest)
+        json.NewEncoder(w).Encode(map[string]string{
+            "error": "email is required",
+        })
+        return
+    }
+    
+    if !strings.Contains(req.Email, "@") {
+        log.Printf("validation failed: invalid email format")
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusBadRequest)
+        json.NewEncoder(w).Encode(map[string]string{
+            "error": "invalid email format",
+        })
+        return
+    }
     
     // Business logic
     err := service.CreateUser(r.Context(), req)
     if err != nil {
-        // Manual error type checking and response
         log.Printf("service error: %v", err)
-        if isValidationError(err) {
-            w.Header().Set("Content-Type", "application/json")
-            w.WriteHeader(http.StatusBadRequest)
-            json.NewEncoder(w).Encode(map[string]string{
-                "error": err.Error(),
-            })
-            return
-        }
-        
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusInternalServerError)
         json.NewEncoder(w).Encode(map[string]string{
@@ -136,18 +139,17 @@ func CreateUserStandard(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-### With HTTPUtils (After)
-
+**With HTTPUtils (18 lines):**
 ```go
-func CreateUserWithUtils(w http.ResponseWriter, r *http.Request) {
+func CreateUser(w http.ResponseWriter, r *http.Request) {
     const op = "handler.CreateUser"
     
-    req, ok := httputils.DecodeRequest[CreateUserRequest](r, h.log, op, w)
+    req, ok := httputils.DecodeRequest[CreateUserRequest](w, r, h.log, op)
     if !ok {
         return
     }
     
-    if ok := httputils.ValidateRequest(req, h.log, op, w, r); !ok {
+    if !httputils.ValidateRequest(w, r, h.log, op, req) {
         return
     }
     
@@ -157,53 +159,29 @@ func CreateUserWithUtils(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    httputils.SendOK(w, h.log, op, r)
+    httputils.SendOK(w, r, h.log, op)
 }
 ```
 
-**Lines of code: 67 → 18 (73% reduction)**
+**Result: 73% less code**
 
 ## API Reference
 
-### Core Functions
+### Request Handling
 
-#### `DecodeRequest[T any](r *http.Request, log *slog.Logger, op string, w http.ResponseWriter) (T, bool)`
+#### `DecodeRequest[T](w, r, log, op) (T, bool)`
+Decodes JSON request body into generic struct type.
 
-Decodes JSON request body into a generic struct type.
-
-**Parameters:**
-- `r`: HTTP request
-- `log`: Structured logger
-- `op`: Operation name for logging
-- `w`: HTTP response writer
-
-**Returns:**
-- Decoded struct of type T
-- Boolean indicating success (false means error response already sent)
-
-**Example:**
 ```go
-req, ok := httputils.DecodeRequest[UserRequest](r, log, "CreateUser", w)
+req, ok := httputils.DecodeRequest[UserRequest](w, r, log, "CreateUser")
 if !ok {
-    return // Error already handled and response sent
+    return // Error already handled
 }
 ```
 
-#### `ValidateRequest[T any](req T, log *slog.Logger, op string, w http.ResponseWriter, r *http.Request) bool`
-
+#### `ValidateRequest[T](w, r, log, op, req) bool`
 Validates struct using `validator` tags.
 
-**Parameters:**
-- `req`: Struct to validate
-- `log`: Structured logger
-- `op`: Operation name
-- `w`: HTTP response writer
-- `r`: HTTP request
-
-**Returns:**
-- `true` if valid, `false` if validation failed (error response sent)
-
-**Example:**
 ```go
 type UserRequest struct {
     Name  string `json:"name" validate:"required,min=2,max=50"`
@@ -211,67 +189,50 @@ type UserRequest struct {
     Age   int    `json:"age" validate:"min=18,max=120"`
 }
 
-if ok := httputils.ValidateRequest(req, log, op, w, r); !ok {
+if !httputils.ValidateRequest(w, r, log, op, req) {
     return
 }
 ```
 
-#### `SendOK(w http.ResponseWriter, log *slog.Logger, op string, r *http.Request)`
+### Response Handling
 
-Sends a standard success response.
-
-**Response Format:**
+#### `SendOK(w, r, log, op)`
+Sends standard success response:
 ```json
-{
-    "status": "OK"
-}
+{"status": "OK"}
 ```
 
-#### `WriteHTTPError(w http.ResponseWriter, log *slog.Logger, op string, err error)`
-
-Handles error responses based on error type.
-
-- If error implements `HTTPError` interface: uses custom status code and message
-- Otherwise: logs error and returns 500 Internal Server Error
-
-### Response Utilities
-
-#### `SendDataOK(w http.ResponseWriter, log *slog.Logger, r *http.Request, op string, data interface{})`
-
-Sends success response with data payload.
-
-**Response Format:**
+#### `SendDataOK(w, r, log, op, data)`
+Sends success response with data:
 ```json
 {
     "status": "OK",
-    "data": { /* your data here */ }
+    "data": { /* your data */ }
 }
 ```
 
-#### `Err(log *slog.Logger, w http.ResponseWriter, r *http.Request, op string, err error, msg string, httpStatus int)`
+#### `WriteHTTPError(w, log, op, err)`
+Handles errors automatically:
+- Custom `HTTPError`: uses provided status and message
+- Other errors: logs and returns 500
 
-Sends error response with custom message and status code.
-
-**Response Format:**
+#### `WriteHTTPErrorWithData(w, log, op, err, data)`
+Same as `WriteHTTPError` but includes data in response:
 ```json
 {
     "status": "Error",
-    "error": "error message"
+    "error": "error message",
+    "data": { /* your data */ }
 }
 ```
 
 ### Error Handling
 
-#### `HTTPError` Type
-
+#### HTTPError Type
 ```go
 type HTTPError struct {
     Code    int
     Message string
-}
-
-func (e HTTPError) Error() string {
-    return e.Message
 }
 
 func New(code int, msg string) HTTPError {
@@ -279,39 +240,35 @@ func New(code int, msg string) HTTPError {
 }
 ```
 
-**Usage in Service Layer:**
+**Usage in services:**
 ```go
 func (s *Service) GetUser(id string) (*User, error) {
     if id == "" {
-        return nil, apperr.New(http.StatusBadRequest, "user ID is required")
+        return nil, apperr.New(http.StatusBadRequest, "user ID required")
     }
     
     user, err := s.repo.GetUser(id)
-    if err != nil {
-        if errors.Is(err, ErrUserNotFound) {
-            return nil, apperr.New(http.StatusNotFound, "user not found")
-        }
-        return nil, err // Will be handled as 500 Internal Server Error
+    if errors.Is(err, ErrUserNotFound) {
+        return nil, apperr.New(http.StatusNotFound, "user not found")
     }
     
-    return user, nil
+    return user, err
 }
 ```
 
 ## Advanced Examples
 
 ### Handler with Data Response
-
 ```go
 func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
     const op = "handler.GetUsers"
     
-    req, ok := httputils.DecodeRequest[GetUsersRequest](r, h.log, op, w)
+    req, ok := httputils.DecodeRequest[GetUsersRequest](w, r, h.log, op)
     if !ok {
         return
     }
     
-    if ok := httputils.ValidateRequest(req, h.log, op, w, r); !ok {
+    if !httputils.ValidateRequest(w, r, h.log, op, req) {
         return
     }
     
@@ -321,75 +278,66 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    response.SendDataOK(w, h.log, r, op, users)
+    httputils.SendDataOK(w, r, h.log, op, users)
 }
 ```
 
-### Request Struct with Validation
+### Error Response with Data (Partial Success)
+```go
+func (h *Handler) ProcessBatch(w http.ResponseWriter, r *http.Request) {
+    const op = "handler.ProcessBatch"
+    
+    req, ok := httputils.DecodeRequest[BatchRequest](w, r, h.log, op)
+    if !ok {
+        return
+    }
+    
+    results, err := h.service.ProcessBatch(r.Context(), req)
+    if err != nil {
+        // Send error but include partial results
+        httputils.WriteHTTPErrorWithData(w, h.log, op, err, results)
+        return
+    }
+    
+    httputils.SendDataOK(w, r, h.log, op, results)
+}
+```
 
+### Complex Validation Example
 ```go
 type CreateProductRequest struct {
-    Name        string  `json:"name" validate:"required,min=2,max=100"`
-    Price       float64 `json:"price" validate:"required,gt=0"`
-    CategoryID  int     `json:"category_id" validate:"required,gt=0"`
-    Description string  `json:"description" validate:"max=500"`
-    Tags        []string`json:"tags" validate:"dive,min=1,max=50"`
-}
-
-type GetProductsRequest struct {
-    Page     int    `json:"page" validate:"min=1"`
-    Limit    int    `json:"limit" validate:"min=1,max=100"`
-    Category string `json:"category" validate:"omitempty,min=2"`
+    Name        string   `json:"name" validate:"required,min=2,max=100"`
+    Price       float64  `json:"price" validate:"required,gt=0"`
+    CategoryID  int      `json:"category_id" validate:"required,gt=0"`
+    Description string   `json:"description" validate:"max=500"`
+    Tags        []string `json:"tags" validate:"dive,min=1,max=50"`
 }
 ```
 
-## Benefits
+## Key Benefits
 
-### 🔧 **Consistency**
-- All handlers follow the same pattern
-- Uniform error responses across the application
-- Standardized logging format
-
-### 🚀 **Productivity**
-- Reduces boilerplate code by ~70%
-- Generic functions work with any struct type
-- Built-in validation eliminates manual checks
-
-### 🛡️ **Reliability**
-- Type-safe request handling
-- Comprehensive error handling
-- Structured logging for better debugging
-
-### 🧹 **Maintainability**
-- Clean, readable handler code
-- Single responsibility functions
-- Easy to test and mock
-
-### 📊 **Observability**
-- Consistent operation logging
-- Error tracking with context
-- Request/response lifecycle visibility
+- **🔧 Consistency**: Uniform error responses and logging
+- **🚀 Productivity**: 73% less boilerplate code
+- **🛡️ Reliability**: Type-safe request handling
+- **🧹 Maintainability**: Clean, testable handler code
+- **📊 Observability**: Structured logging with context
 
 ## Best Practices
 
-1. **Use Consistent Operation Names**: Follow a pattern like `"handler.package.Method"`
-2. **Validate at Struct Level**: Use comprehensive `validate` tags
-3. **Handle Errors Gracefully**: Use `HTTPError` for business logic errors
-4. **Log Contextually**: Include operation names in all log entries
-5. **Keep Handlers Thin**: Move business logic to service layer
+1. **Operation Names**: Use pattern `"handler.package.Method"`
+2. **Validation**: Leverage comprehensive `validate` tags
+3. **Error Handling**: Use `HTTPError` for business logic errors
+4. **Logging**: Include operation context in all logs
+5. **Clean Architecture**: Keep handlers thin, logic in services
 
 ## Migration Guide
 
-To migrate existing handlers:
-
-1. Replace manual JSON decoding with `DecodeRequest`
-2. Replace manual validation with `ValidateRequest` 
-3. Use `WriteHTTPError` for error responses
-4. Use `SendOK` or `SendDataOK` for success responses
+1. Replace `json.NewDecoder(r.Body).Decode()` → `DecodeRequest`
+2. Replace manual validation → `ValidateRequest`
+3. Replace custom error responses → `WriteHTTPError`
+4. Replace manual success responses → `SendOK`/`SendDataOK`
 5. Add structured logging with operation names
-
-Your handlers will become more maintainable, consistent, and significantly shorter!
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
